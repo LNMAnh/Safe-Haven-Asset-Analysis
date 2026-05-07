@@ -1,0 +1,95 @@
+import yfinance as yf
+import pandas as pd
+from pathlib import Path
+
+# ── Cấu hình ──────────────────────────────────────────────
+TICKERS = {
+    "SP500": "^GSPC",
+    "VIX":   "^VIX",
+    "Gold":  "GC=F",
+    "IEF":   "IEF",
+    "JPY":   "JPY=X",
+}
+
+START_DATE = "2023-01-01"
+END_DATE   = "2025-05-06"
+
+ASSETS_WITH_VOLUME = {"SP500", "Gold", "IEF"}
+
+OUTPUT_PATH = Path("data/raw_market_data.csv")
+# ──────────────────────────────────────────────────────────
+
+
+def download_prices(tickers: dict, start: str, end: str) -> pd.DataFrame:
+    frames = []
+
+    for name, ticker in tickers.items():
+        print(f"Đang tải: {name} ({ticker})...")
+        raw = yf.download(
+            ticker,
+            start=start,
+            end=end,
+            auto_adjust=True,
+            progress=False,
+        )
+
+        if raw.empty:
+            print(f"  ⚠️  Không lấy được data cho {ticker}, bỏ qua.")
+            continue
+
+        if name in ASSETS_WITH_VOLUME:
+            df = raw[["Close", "Volume"]].copy()
+            df.columns = [f"{name}_Close", f"{name}_Volume"]
+        else:
+            df = raw[["Close"]].copy()
+            df.columns = [f"{name}_Close"]
+
+        frames.append(df)
+
+    combined = pd.concat(frames, axis=1)
+    sp500_days = combined["SP500_Close"].dropna().index
+    combined   = combined.loc[sp500_days]
+    combined   = combined.ffill()
+
+    return combined
+
+
+def validate(df: pd.DataFrame):
+    print(f"\n🔍 Kiểm tra data:")
+    print(f"   Shape  : {df.shape}")
+    print(f"   Từ {df.index[0].date()} đến {df.index[-1].date()}")
+    print(f"   Số ngày: {len(df)}")
+
+    missing = df.isnull().sum()
+    if missing.any():
+        print(f"\n   ⚠️  Missing values:")
+        print(missing[missing > 0])
+    else:
+        print(f"   ✅ Không có missing values")
+
+    checks = {
+        "SP500_Close": (3000, 7000),
+        "VIX_Close":   (10, 90),
+        "Gold_Close":  (1500, 3500),
+        "IEF_Close":   (85, 115),
+        "JPY_Close":   (100, 165),
+    }
+    print(f"\n   Range check:")
+    for col, (lo, hi) in checks.items():
+        mn, mx = df[col].min(), df[col].max()
+        ok = "✅" if lo <= mn and mx <= hi else "⚠️ "
+        print(f"   {ok} {col}: {mn:.2f} – {mx:.2f}")
+
+    print(f"\n   Columns: {list(df.columns)}")
+
+
+def main():
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df = download_prices(TICKERS, START_DATE, END_DATE)
+    validate(df)
+    df.to_csv(OUTPUT_PATH)
+    print(f"\n💾 Saved → {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()
