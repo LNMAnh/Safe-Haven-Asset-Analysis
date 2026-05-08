@@ -1,0 +1,69 @@
+import pandas as pd
+from pathlib import Path
+
+INPUT_PATH  = Path("data/raw_market_data.csv")
+OUTPUT_PATH = Path("data/market_data_clean.csv")
+
+ALL_ASSETS = ["SP500", "VIX", "Gold", "IEF", "JPY"]
+
+
+def load(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, index_col=0, parse_dates=True)
+    df.index.name = "Date"
+    return df
+
+
+def clean(df: pd.DataFrame) -> pd.DataFrame:
+    close_cols = [f"{a}_Close" for a in ALL_ASSETS]
+
+    # 1. Forward-fill những ngày thiếu giá
+    df[close_cols] = df[close_cols].ffill()
+
+    # 2. Drop những hàng vẫn còn NaN sau ffill (đầu chuỗi chưa có data)
+    df.dropna(subset=close_cols, inplace=True)
+
+    # 3. Drop duplicate nếu có
+    df = df[~df.index.duplicated(keep="first")]
+
+    # 4. Sắp xếp theo ngày tăng dần
+    df.sort_index(inplace=True)
+
+    return df
+
+
+def validate(df: pd.DataFrame):
+    print(f"✅ Shape       : {df.shape}")
+    print(f"   Từ          : {df.index[0].date()}")
+    print(f"   Đến         : {df.index[-1].date()}")
+    print(f"   Số ngày     : {len(df)}")
+
+    missing = df.isnull().sum()
+    if missing.any():
+        print(f"\n⚠️  Missing values còn sót:")
+        print(missing[missing > 0])
+    else:
+        print(f"   Missing     : Không có ✅")
+
+    dup = df.index.duplicated().sum()
+    print(f"   Duplicate   : {dup} hàng")
+
+
+def main():
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    print("📂 Đọc data thô...")
+    df = load(INPUT_PATH)
+    print(f"   Raw shape: {df.shape}")
+
+    print("\n🧹 Làm sạch...")
+    df = clean(df)
+
+    print("\n🔍 Kiểm tra sau khi clean:")
+    validate(df)
+
+    df.to_csv(OUTPUT_PATH)
+    print(f"\n💾 Saved → {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()
