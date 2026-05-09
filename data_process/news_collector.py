@@ -34,12 +34,11 @@ def load_stress_days(input_file):
         print("Không tìm thấy ngày stress nào trong dữ liệu.")
         return pd.DataFrame()
 
-    # Nếu có cột VIX_Close thì chọn các ngày stress mạnh nhất trước
-    if "VIX_Close" in stress_df.columns:
-        stress_df = stress_df.sort_values("VIX_Close", ascending=False)
+        # Sort stress days chronologically from oldest to newest
+    stress_df = stress_df.sort_values("Date")
 
     # Lấy tất cả các ngày stress
-# stress_df = stress_df.head(20)
+    # stress_df = stress_df.head(20)
 
     return stress_df
 
@@ -188,6 +187,11 @@ def main():
         news_df = pd.DataFrame(columns=[
             "Date", "source", "title", "url", "published_at", "news_provider"
         ])
+
+    if not news_df.empty:
+        news_df["Date"] = pd.to_datetime(news_df["Date"])
+        news_df = news_df.sort_values(["Date", "published_at", "title"])
+        news_df["Date"] = news_df["Date"].dt.strftime("%Y-%m-%d")
 
     news_df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
 
