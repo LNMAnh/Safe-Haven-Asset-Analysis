@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 from pathlib import Path
+from datetime import date
 
 # ── Cấu hình ──────────────────────────────────────────────
 TICKERS = {
@@ -12,7 +13,7 @@ TICKERS = {
 }
 
 START_DATE = "2023-01-01"
-END_DATE   = "2025-05-06"
+END_DATE   = date.today().strftime("%Y-%m-%d")
 
 ASSETS_WITH_VOLUME = {"SP500", "Gold", "IEF"}
 
@@ -24,7 +25,7 @@ def download_prices(tickers: dict, start: str, end: str) -> pd.DataFrame:
     frames = []
 
     for name, ticker in tickers.items():
-        print(f"Đang tải: {name} ({ticker})...")
+        print(f"Downloading: {name} ({ticker})...")
         raw = yf.download(
             ticker,
             start=start,
@@ -34,7 +35,7 @@ def download_prices(tickers: dict, start: str, end: str) -> pd.DataFrame:
         )
 
         if raw.empty:
-            print(f"  ⚠️  Không lấy được data cho {ticker}, bỏ qua.")
+            print(f"  WARNING: No data for {ticker}, skipping.")
             continue
 
         if name in ASSETS_WITH_VOLUME:
@@ -55,17 +56,17 @@ def download_prices(tickers: dict, start: str, end: str) -> pd.DataFrame:
 
 
 def validate(df: pd.DataFrame):
-    print(f"\n🔍 Kiểm tra data:")
+    print(f"\nKiem tra data:")
     print(f"   Shape  : {df.shape}")
-    print(f"   Từ {df.index[0].date()} đến {df.index[-1].date()}")
-    print(f"   Số ngày: {len(df)}")
+    print(f"   Tu {df.index[0].date()} den {df.index[-1].date()}")
+    print(f"   So ngay: {len(df)}")
 
     missing = df.isnull().sum()
     if missing.any():
-        print(f"\n   ⚠️  Missing values:")
+        print(f"\n   WARNING - Missing values:")
         print(missing[missing > 0])
     else:
-        print(f"   ✅ Không có missing values")
+        print(f"   Missing: Khong co")
 
     checks = {
         "SP500_Close": (3000, 7000),
@@ -77,18 +78,22 @@ def validate(df: pd.DataFrame):
     print(f"\n   Range check:")
     for col, (lo, hi) in checks.items():
         mn, mx = df[col].min(), df[col].max()
-        ok = "✅" if lo <= mn and mx <= hi else "⚠️ "
-        print(f"   {ok} {col}: {mn:.2f} – {mx:.2f}")
+        ok = "OK" if lo <= mn and mx <= hi else "WARNING"
+        print(f"   {ok} {col}: {mn:.2f} - {mx:.2f}")
 
     print(f"\n   Columns: {list(df.columns)}")
 
 
 def main():
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"Lay data tu {START_DATE} den {END_DATE}")
+
     df = download_prices(TICKERS, START_DATE, END_DATE)
     validate(df)
+
     df.to_csv(OUTPUT_PATH)
-    print(f"\n💾 Saved → {OUTPUT_PATH}")
+    print(f"\nSaved -> {OUTPUT_PATH}")
 
 
 if __name__ == "__main__":
