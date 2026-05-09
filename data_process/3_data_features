@@ -118,7 +118,7 @@ def main():
     print("   Stress flag")
 
     # Drop 29 hang dau bi NaN do rolling 30 ngay
-    # df.dropna(subset=["SP500_Vol30", "SP500_MA30"], inplace=True)
+    df.dropna(subset=["SP500_Vol30", "SP500_MA30"], inplace=True)
 
     print("\nKiem tra:")
     validate(df)
