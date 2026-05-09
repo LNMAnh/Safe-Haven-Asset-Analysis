@@ -1,0 +1,159 @@
+import pandas as pd
+import numpy as np
+from pathlib import Path
+
+INPUT_PATH  = Path("data/market_data_features.csv")
+OUTPUT_PATH = Path("data/safe_haven_score.csv")
+
+SAFE_HAVENS = ["Gold", "IEF", "JPY"]
+
+
+def load(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, index_col=0, parse_dates=True)
+    df.index.name = "Date"
+    return df
+
+
+def filter_stress_days(df: pd.DataFrame) -> pd.DataFrame:
+    # Chi lay nhung ngay is_stress = 1
+    stress = df[df["is_stress"] == 1].copy()
+    print(f"So ngay stress: {len(stress)} / {len(df)} tong ngay")
+    return stress
+
+
+def score_avg_return(stress: pd.DataFrame) -> pd.Series:
+    # Tieu chi 1: return trung binh trong nhung ngay stress
+    # Cang cao cang tot
+    scores = {}
+    for asset in SAFE_HAVENS:
+        scores[asset] = stress[f"{asset}_Return"].mean()
+    return pd.Series(scores, name="avg_return")
+
+
+def score_win_rate(stress: pd.DataFrame) -> pd.Series:
+    # Tieu chi 2: ty le ngay return duong trong nhung ngay stress
+    # Nha dau tu luc hoang loan can tai san ngay nao cung xanh de an tam
+    # Cang cao cang tot
+    scores = {}
+    for asset in SAFE_HAVENS:
+        scores[asset] = (stress[f"{asset}_Return"] > 0).mean()
+    return pd.Series(scores, name="win_rate")
+
+
+def score_correlation(stress: pd.DataFrame) -> pd.Series:
+    # Tieu chi 3: tuong quan voi SP500 trong nhung ngay stress
+    # Cang am = chay nguoc chieu SP500 = safe haven tot
+    # Cang thap cang tot
+    scores = {}
+    for asset in SAFE_HAVENS:
+        corr = stress[f"{asset}_Return"].corr(stress["SP500_Return"])
+        scores[asset] = round(corr, 4)
+    return pd.Series(scores, name="corr_with_sp500")
+
+
+def score_volatility(stress: pd.DataFrame) -> pd.Series:
+    # Tieu chi 4: do lech chuan cua return trong nhung ngay stress
+    # Tai san tru an khong duoc giat len giat xuong qua manh
+    # Cang thap cang tot
+    scores = {}
+    for asset in SAFE_HAVENS:
+        scores[asset] = stress[f"{asset}_Return"].std()
+    return pd.Series(scores, name="std_return")
+
+
+def zscore_normalize(series: pd.Series, higher_is_better: bool) -> pd.Series:
+    # Z-score: do moi gia tri cach trung binh bao nhieu do lech chuan
+    # z = (x - mean) / std
+    # Dua tat ca tieu chi ve cung thang do truoc khi cong diem
+    mean = series.mean()
+    std  = series.std()
+
+    if std == 0:
+        return pd.Series([0.0] * len(series), index=series.index)
+
+    z = (series - mean) / std
+
+    # Neu thap hon la tot hon thi dao nguoc dau z
+    if not higher_is_better:
+        z = z * -1
+
+    return z.round(4)
+
+
+def calc_final_score(
+    avg_return: pd.Series,
+    win_rate:   pd.Series,
+    corr:       pd.Series,
+    vol:        pd.Series,
+) -> pd.DataFrame:
+    result = pd.DataFrame({
+        "avg_return":      avg_return.round(6),
+        "win_rate":        win_rate.round(4),
+        "corr_with_sp500": corr.round(4),
+        "std_return":      vol.round(6),
+    })
+
+    # Z-score tung tieu chi
+    result["return_score"] = zscore_normalize(avg_return, higher_is_better=True)
+    result["winrate_score"] = zscore_normalize(win_rate,  higher_is_better=True)
+    result["corr_score"]   = zscore_normalize(corr,       higher_is_better=False)
+    result["vol_score"]    = zscore_normalize(vol,        higher_is_better=False)
+
+    # Final score: trung binh cong 4 z-score, trong so bang nhau (25% moi tieu chi)
+    result["final_score"] = (
+        result["return_score"]  +
+        result["winrate_score"] +
+        result["corr_score"]    +
+        result["vol_score"]
+    ).div(4).round(4)
+
+    # Xep hang
+    result["rank"] = result["final_score"].rank(ascending=False).astype(int)
+
+    return result.sort_values("rank")
+
+
+def print_summary(stress: pd.DataFrame, result: pd.DataFrame):
+    print("\n--- RAW METRICS (chi nhung ngay stress) ---")
+    for asset in SAFE_HAVENS:
+        ret  = stress[f"{asset}_Return"]
+        corr = ret.corr(stress["SP500_Return"])
+        print(f"\n{asset}:")
+        print(f"  Avg return           : {ret.mean() * 100:.3f}% / ngay")
+        print(f"  Win rate             : {(ret > 0).mean() * 100:.1f}%")
+        print(f"  Std return           : {ret.std() * 100:.3f}%")
+        print(f"  Correlation voi SP500: {corr:.4f}")
+
+    print("\n--- SAFE HAVEN SCORE (4 tieu chi, Z-score, trong so 25% moi tieu chi) ---")
+    print(result.to_string())
+
+    winner = result[result["rank"] == 1].index[0]
+    print(f"\nKet luan: {winner} la safe haven manh nhat trong giai doan stress")
+
+
+def main():
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    print("Doc data features...")
+    df = load(INPUT_PATH)
+
+    print("Loc nhung ngay stress...")
+    stress = filter_stress_days(df)
+
+    print("Tinh 4 tieu chi...")
+    avg_return = score_avg_return(stress)
+    win_rate   = score_win_rate(stress)
+    corr       = score_correlation(stress)
+    vol        = score_volatility(stress)
+
+    print("Tinh final score (Z-score, 4 tieu chi)...")
+    result = calc_final_score(avg_return, win_rate, corr, vol)
+
+    print_summary(stress, result)
+
+    result.to_csv(OUTPUT_PATH)
+    print(f"\nSaved -> {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()
