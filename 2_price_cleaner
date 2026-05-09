@@ -16,53 +16,53 @@ def load(path: Path) -> pd.DataFrame:
 def clean(df: pd.DataFrame) -> pd.DataFrame:
     close_cols = [f"{a}_Close" for a in ALL_ASSETS]
 
-    # 1. Forward-fill những ngày thiếu giá
+    # 1. Forward-fill nhung ngay thieu gia
     df[close_cols] = df[close_cols].ffill()
 
-    # 2. Drop những hàng vẫn còn NaN sau ffill (đầu chuỗi chưa có data)
+    # 2. Drop nhung hang van con NaN sau ffill (dau chuoi chua co data)
     df.dropna(subset=close_cols, inplace=True)
 
-    # 3. Drop duplicate nếu có
+    # 3. Drop duplicate neu co
     df = df[~df.index.duplicated(keep="first")]
 
-    # 4. Sắp xếp theo ngày tăng dần
+    # 4. Sap xep theo ngay tang dan
     df.sort_index(inplace=True)
 
     return df
 
 
 def validate(df: pd.DataFrame):
-    print(f"✅ Shape       : {df.shape}")
-    print(f"   Từ          : {df.index[0].date()}")
-    print(f"   Đến         : {df.index[-1].date()}")
-    print(f"   Số ngày     : {len(df)}")
+    print(f"   Shape    : {df.shape}")
+    print(f"   Tu       : {df.index[0].date()}")
+    print(f"   Den      : {df.index[-1].date()}")
+    print(f"   So ngay  : {len(df)}")
 
     missing = df.isnull().sum()
     if missing.any():
-        print(f"\n⚠️  Missing values còn sót:")
+        print(f"\n   WARNING - Missing values con sot:")
         print(missing[missing > 0])
     else:
-        print(f"   Missing     : Không có ✅")
+        print(f"   Missing  : Khong co")
 
     dup = df.index.duplicated().sum()
-    print(f"   Duplicate   : {dup} hàng")
+    print(f"   Duplicate: {dup} hang")
 
 
 def main():
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    print("📂 Đọc data thô...")
+    print("Doc data tho...")
     df = load(INPUT_PATH)
     print(f"   Raw shape: {df.shape}")
 
-    print("\n🧹 Làm sạch...")
+    print("\nLam sach...")
     df = clean(df)
 
-    print("\n🔍 Kiểm tra sau khi clean:")
+    print("\nKiem tra sau khi clean:")
     validate(df)
 
     df.to_csv(OUTPUT_PATH)
-    print(f"\n💾 Saved → {OUTPUT_PATH}")
+    print(f"\nSaved -> {OUTPUT_PATH}")
 
 
 if __name__ == "__main__":
