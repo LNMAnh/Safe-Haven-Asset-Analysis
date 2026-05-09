@@ -1,0 +1,131 @@
+import pandas as pd
+import numpy as np
+from pathlib import Path
+
+INPUT_PATH  = Path("data/market_data_clean.csv")
+OUTPUT_PATH = Path("data/market_data_features.csv")
+
+ALL_ASSETS  = ["SP500", "VIX", "Gold", "IEF", "JPY"]
+SAFE_HAVENS = ["Gold", "IEF", "JPY"]
+DRAWDOWN_ASSETS = ["SP500", "Gold", "IEF"]  # khong tinh drawdown cho JPY va VIX
+
+VIX_THRESHOLD    = 25
+SP500_DROP_LIMIT = -0.015
+
+
+def load(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, index_col=0, parse_dates=True)
+    df.index.name = "Date"
+    return df
+
+
+def calc_returns(df: pd.DataFrame) -> pd.DataFrame:
+    # Return(t) = ( Close(t) - Close(t-1) ) / Close(t-1)
+    for asset in ALL_ASSETS:
+        df[f"{asset}_Return"] = df[f"{asset}_Close"].pct_change()
+
+    df["JPY_Return"] = df["JPY_Return"] * -1
+
+    return df
+
+
+def calc_moving_averages(df: pd.DataFrame) -> pd.DataFrame:
+    # MA7(t)  = ( Close(t) + Close(t-1) + ... + Close(t-6)  ) / 7
+    # MA30(t) = ( Close(t) + Close(t-1) + ... + Close(t-29) ) / 30
+    for asset in ALL_ASSETS:
+        col = f"{asset}_Close"
+        df[f"{asset}_MA7"]  = df[col].rolling(7).mean()
+        df[f"{asset}_MA30"] = df[col].rolling(30).mean()
+
+    return df
+
+
+def calc_volatility(df: pd.DataFrame) -> pd.DataFrame:
+    # Vol30(t) = std( Return(t), ..., Return(t-29) ) x sqrt(252)
+    for asset in ALL_ASSETS:
+        df[f"{asset}_Vol30"] = (
+            df[f"{asset}_Return"]
+            .rolling(30)
+            .std()
+            * np.sqrt(252)  # annualize: 1 nam co khoang 252 ngay giao dich
+        )
+
+    return df
+
+
+def calc_drawdown(df: pd.DataFrame) -> pd.DataFrame:
+    # PeakMax(t)  = max( Close(t), Close(t-1), ..., Close(t-251) )
+    # Drawdown(t) = ( Close(t) - PeakMax(t) ) / PeakMax(t)
+    # Chi tinh cho SP500, Gold, IEF — khong tinh JPY va VIX
+    for asset in DRAWDOWN_ASSETS:
+        col      = f"{asset}_Close"
+        roll_max = df[col].rolling(252, min_periods=1).max()
+        df[f"{asset}_Drawdown"] = (df[col] - roll_max) / roll_max
+
+    return df
+
+
+def flag_stress(df: pd.DataFrame) -> pd.DataFrame:
+    # is_stress(t) = 1 neu VIX(t) > 25 HOAC SP500_Return(t) < -0.015
+    # is_stress(t) = 0 neu khong thoa dieu kien nao
+    vix_stress = df["VIX_Close"] > VIX_THRESHOLD
+    sp_stress  = df["SP500_Return"] < SP500_DROP_LIMIT
+    df["is_stress"] = (vix_stress | sp_stress).astype(int)
+
+    return df
+
+
+def validate(df: pd.DataFrame):
+    print(f"   Shape      : {df.shape}")
+
+    missing = df.isnull().sum()
+    missing = missing[missing > 0]
+    if not missing.empty:
+        print(f"\n   WARNING - NaN con sot:")
+        print(missing)
+    else:
+        print(f"   Missing    : Khong co")
+
+    n_stress = df["is_stress"].sum()
+    print(f"   Stress days: {n_stress} ngay "
+          f"({n_stress / len(df) * 100:.1f}% tong)")
+
+    print(f"\n   Columns ({len(df.columns)}):")
+    for col in df.columns:
+        print(f"     {col}")
+
+
+def main():
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+    print("Doc data clean...")
+    df = load(INPUT_PATH)
+
+    print("Tinh toan...")
+    df = calc_returns(df)
+    print("   Daily returns (JPY da dao dau)")
+
+    df = calc_moving_averages(df)
+    print("   Moving averages (MA7, MA30)")
+
+    df = calc_volatility(df)
+    print("   Volatility 30 ngay")
+
+    df = calc_drawdown(df)
+    print("   Drawdown (SP500, Gold, IEF)")
+
+    df = flag_stress(df)
+    print("   Stress flag")
+
+    # Drop 29 hang dau bi NaN do rolling 30 ngay
+    # df.dropna(subset=["SP500_Vol30", "SP500_MA30"], inplace=True)
+
+    print("\nKiem tra:")
+    validate(df)
+
+    df.to_csv(OUTPUT_PATH)
+    print(f"\nSaved -> {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()
