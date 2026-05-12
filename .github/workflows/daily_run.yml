@@ -1,0 +1,48 @@
+name: Daily Financial Data Pipeline
+
+on:
+  schedule:
+    # Chạy tự động vào 7:00 sáng giờ Việt Nam mỗi ngày
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Nút bấm chạy thủ công
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Lấy code về máy ảo
+        uses: actions/checkout@v3
+
+      - name: Cài đặt Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Cài đặt thư viện
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Chạy chuỗi xử lý dữ liệu và AI
+        run: |
+          python data_process/1_data_collector
+          python data_process/2_data_cleaner
+          python data_process/news_collector.py
+          python analysis/3_data_features
+          python analysis/4_safe_haven_score
+          python analysis/merge_context.py
+          
+      - name: Chạy vẽ biểu đồ trực quan
+        run: |
+          python visualization/Chart
+
+      - name: Lưu tất cả Data và Biểu đồ mới lên GitHub
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          
+          # Dùng git add . để gom cả file CSV lẫn các ảnh biểu đồ mới tạo ra
+          git add .
+          git commit -m "Auto-update market data, AI scores and charts" || exit 0
+          git push
