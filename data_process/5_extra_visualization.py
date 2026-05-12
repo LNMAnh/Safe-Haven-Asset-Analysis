@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 # ============================================================
 
 INPUT_PATH = "data/market_data_features.csv"
-OUTPUT_DIR = "outputs/figures"
+OUTPUT_DIR = "visualization/output"
 
 PRICE_COLUMNS = {
     "S&P 500": "SP500_Close",
@@ -69,18 +69,15 @@ def load_data():
 
 def save_chart(filename):
     """
-    Save chart as both PNG and PDF.
+    Save chart as PNG only.
     """
     png_path = os.path.join(OUTPUT_DIR, f"{filename}.png")
-    pdf_path = os.path.join(OUTPUT_DIR, f"{filename}.pdf")
 
     plt.tight_layout()
     plt.savefig(png_path, dpi=300, bbox_inches="tight")
-    plt.savefig(pdf_path, bbox_inches="tight")
     plt.close()
 
     print(f"Saved: {png_path}")
-    print(f"Saved: {pdf_path}")
 
 
 def get_stress_periods(df):
