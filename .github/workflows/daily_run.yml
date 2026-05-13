@@ -3,7 +3,7 @@ name: Daily Financial Data Pipeline
 on:
   schedule:
     # Chạy tự động vào 7:00 sáng giờ Việt Nam mỗi ngày
-    - cron: '0 0 * * *'
+    - cron: '17 0 * * *'
   workflow_dispatch: # Nút bấm chạy thủ công
 
 jobs:
