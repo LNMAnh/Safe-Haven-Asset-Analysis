@@ -30,16 +30,31 @@ MODEL_NAME = "llama-3.3-70b-versatile"
 # HELPER: MARKDOWN IMAGE
 # ─────────────────────────────────────────────
 def img_tag(chart_name: str) -> str:
-    """Return markdown image using relative path."""
+    """
+    Return markdown image only if chart exists.
+    If chart is missing -> return empty string.
+    """
 
     path = VIZ_DIR / chart_name
 
     if not path.exists():
-        return f"> ⚠️ Chart not found: `{path}`\n\n"
+        return ""
 
     rel_path = f"../visualization/output/{chart_name}"
 
     return f"![{chart_name}]({rel_path})\n\n"
+
+
+def render_charts(chart_list):
+    """
+    Render multiple charts safely.
+    Missing charts will be skipped automatically.
+    """
+
+    return "".join(
+        img_tag(chart)
+        for chart in chart_list
+    )
 
 
 # ─────────────────────────────────────────────
@@ -342,14 +357,40 @@ def main():
             f"| {round(info['win_rate'] * 100, 1)}% |\n"
         )
 
+    # ─────────────────────────────────────────────
+    # CHART GROUPS
+    # ─────────────────────────────────────────────
+    trend_charts = [
+        "chart1_stress_timeline.png",
+        "chart2_performance.png",
+    ]
+
+    anomaly_charts = [
+        "chart6_stress_episodes.png",
+        "chart_8_stress_vs_normal_return.png",
+    ]
+
+    risk_charts = [
+        "chart5_score_ranking.png",
+        "chart_6_drawdown_comparison.png",
+    ]
+
+    comparison_charts = [
+        "chart3_correlation.png",
+        "chart_7_rolling_correlation_sp500.png",
+        "chart4_distribution.png",
+    ]
+
+    # ─────────────────────────────────────────────
+    # REPORT BODY
+    # ─────────────────────────────────────────────
     report += f"""
 
 ---
 
 ## 1. Trend Summary
 
-{img_tag("chart1_stress_timeline.png")}
-{img_tag("chart2_performance.png")}
+{render_charts(trend_charts)}
 
 {results['trend']}
 
@@ -357,8 +398,7 @@ def main():
 
 ## 2. Anomaly Detection
 
-{img_tag("chart6_stress_episodes.png")}
-{img_tag("chart_8_stress_vs_normal_return.png")}
+{render_charts(anomaly_charts)}
 
 {results['anomaly']}
 
@@ -366,8 +406,7 @@ def main():
 
 ## 3. Risk Commentary
 
-{img_tag("chart5_score_ranking.png")}
-{img_tag("chart_6_drawdown_comparison.png")}
+{render_charts(risk_charts)}
 
 {results['risk']}
 
@@ -375,9 +414,7 @@ def main():
 
 ## 4. Asset Comparison
 
-{img_tag("chart3_correlation.png")}
-{img_tag("chart_7_rolling_correlation_sp500.png")}
-{img_tag("chart4_distribution.png")}
+{render_charts(comparison_charts)}
 
 {results['comparison']}
 
