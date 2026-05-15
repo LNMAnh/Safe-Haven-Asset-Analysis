@@ -1,207 +1,455 @@
-import pandas as pd
+import os
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
-from pathlib import Path
+
+
+# ============================================================
+# CONFIG
+# ============================================================
 
 FEATURES_PATH = Path("data/market_data_features.csv")
-SCORE_PATH    = Path("data/safe_haven_score.csv")
-OUTPUT_DIR    = Path("visualization/output")
+SCORE_PATH = Path("data/safe_haven_score.csv")
+OUTPUT_DIR = Path("visualization/output")
 
 SAFE_HAVENS = ["Gold", "IEF", "JPY"]
+
 COLORS = {
-    "Gold":  "#FFB700",
-    "IEF":   "#2196F3",
-    "JPY":   "#4CAF50",
+    "Gold": "#FFB700",
+    "IEF": "#2196F3",
+    "JPY": "#4CAF50",
     "SP500": "#E53935",
 }
 
+PRICE_COLUMNS = {
+    "S&P 500": "SP500_Close",
+    "Gold": "Gold_Close",
+    "IEF": "IEF_Close",
+    "JPY": "JPY_Close",
+}
+
+
+# ============================================================
+# LOAD DATA
+# ============================================================
 
 def load_data():
     features = pd.read_csv(FEATURES_PATH, index_col=0, parse_dates=True)
-    score    = pd.read_csv(SCORE_PATH, index_col=0)
+    score = pd.read_csv(SCORE_PATH, index_col=0)
+
     return features, score
 
 
-# ── CHART 1: Market Stress Timeline ───────────────────────
-def chart1_stress_timeline(df: pd.DataFrame):
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def save_chart(fig, filename):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    fig.tight_layout()
+    fig.savefig(OUTPUT_DIR / filename, dpi=150)
+    plt.close(fig)
+
+    print(f"Saved: {filename}")
+
+
+def get_stress_periods(df):
+    """
+    Convert stress labels into continuous stress periods.
+    """
+    periods = []
+
+    stress_series = df["is_stress"].reset_index(drop=True)
+    dates = df.index
+
+    in_stress = False
+    start_date = None
+
+    for i in range(len(df)):
+        stress = stress_series.iloc[i] == 1
+
+        if stress and not in_stress:
+            start_date = dates[i]
+            in_stress = True
+
+        if in_stress and (not stress or i == len(df) - 1):
+            end_idx = i if stress else i - 1
+            end_date = dates[end_idx]
+
+            periods.append((start_date, end_date))
+            in_stress = False
+
+    return periods
+
+
+def calculate_drawdown(series):
+    """
+    Drawdown = current price / running max - 1
+    """
+    running_max = series.cummax()
+    drawdown = series / running_max - 1
+
+    return drawdown
+
+
+# ============================================================
+# CHART 1: MARKET STRESS TIMELINE
+# ============================================================
+
+def chart1_stress_timeline(df):
     fig, ax = plt.subplots(figsize=(14, 5))
 
-    ax.plot(df.index, df["SP500_Close"], color=COLORS["SP500"],
-            linewidth=1.2, label="S&P 500")
+    ax.plot(
+        df.index,
+        df["SP500_Close"],
+        color=COLORS["SP500"],
+        linewidth=1.2,
+        label="S&P 500"
+    )
 
     for day in df[df["is_stress"] == 1].index:
-        ax.axvspan(day, day + pd.Timedelta(days=1),
-                   color="red", alpha=0.15)
+        ax.axvspan(
+            day,
+            day + pd.Timedelta(days=1),
+            color="red",
+            alpha=0.15
+        )
 
-    stress_patch = mpatches.Patch(color="red", alpha=0.3, label="Market Stress")
-    ax.set_title("S&P 500 Price with Market Stress Periods", fontsize=14)
+    stress_patch = mpatches.Patch(
+        color="red",
+        alpha=0.3,
+        label="Market Stress"
+    )
+
+    ax.set_title(
+        "S&P 500 Price with Market Stress Periods",
+        fontsize=14
+    )
+
     ax.set_xlabel("Date")
     ax.set_ylabel("S&P 500 Close")
+
     ax.legend(handles=[ax.lines[0], stress_patch])
+
     ax.grid(True, alpha=0.3)
 
     n_stress = df["is_stress"].sum()
+
     ax.annotate(
         f"Total stress days: {n_stress} ({n_stress/len(df)*100:.1f}%)",
-        xy=(0.02, 0.05), xycoords="axes fraction",
-        fontsize=10, color="red"
+        xy=(0.02, 0.05),
+        xycoords="axes fraction",
+        fontsize=10,
+        color="red"
     )
 
-    plt.tight_layout()
-    fig.savefig(OUTPUT_DIR / "chart1_stress_timeline.png", dpi=150)
-    plt.close()
-    print("Saved: chart1_stress_timeline.png")
+    save_chart(fig, "chart1_stress_timeline.png")
 
 
-# ── CHART 2: Safe Haven Performance (normalized) ──────────
-def chart2_performance(df: pd.DataFrame):
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8),
-                                    gridspec_kw={"height_ratios": [3, 1]})
+# ============================================================
+# CHART 2: SAFE HAVEN PERFORMANCE
+# ============================================================
+
+def chart2_performance(df):
+    fig, (ax1, ax2) = plt.subplots(
+        2,
+        1,
+        figsize=(14, 8),
+        gridspec_kw={"height_ratios": [3, 1]}
+    )
 
     for asset in SAFE_HAVENS:
-        col        = f"{asset}_Close"
+        col = f"{asset}_Close"
+
         normalized = df[col] / df[col].iloc[0] * 100
-        ax1.plot(df.index, normalized, color=COLORS[asset],
-                 linewidth=1.2, label=asset)
+
+        ax1.plot(
+            df.index,
+            normalized,
+            color=COLORS[asset],
+            linewidth=1.2,
+            label=asset
+        )
 
     for day in df[df["is_stress"] == 1].index:
-        ax1.axvspan(day, day + pd.Timedelta(days=1),
-                    color="red", alpha=0.08)
+        ax1.axvspan(
+            day,
+            day + pd.Timedelta(days=1),
+            color="red",
+            alpha=0.08
+        )
 
-    ax1.axhline(100, color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
-    ax1.set_title("Safe Haven Asset Performance (Normalized to 100)", fontsize=14)
+    ax1.axhline(
+        100,
+        color="gray",
+        linestyle="--",
+        linewidth=0.8,
+        alpha=0.5
+    )
+
+    ax1.set_title(
+        "Safe Haven Asset Performance (Normalized to 100)",
+        fontsize=14
+    )
+
     ax1.set_ylabel("Normalized Price")
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
-    ax2.bar(df.index, df["IEF_Volume"], color=COLORS["IEF"],
-            alpha=0.5, label="IEF Volume")
+    ax2.bar(
+        df.index,
+        df["IEF_Volume"],
+        color=COLORS["IEF"],
+        alpha=0.5,
+        label="IEF Volume"
+    )
+
     ax2.set_ylabel("IEF Volume")
     ax2.set_xlabel("Date")
     ax2.legend(fontsize=9)
     ax2.grid(True, alpha=0.3)
 
-    plt.tight_layout()
-    fig.savefig(OUTPUT_DIR / "chart2_performance.png", dpi=150)
-    plt.close()
-    print("Saved: chart2_performance.png")
+    save_chart(fig, "chart2_performance.png")
 
 
-# ── CHART 3: Correlation Heatmap ──────────────────────────
-def chart3_correlation(df: pd.DataFrame):
+# ============================================================
+# CHART 3: CORRELATION HEATMAP
+# ============================================================
+
+def chart3_correlation(df):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
-    assets      = ["SP500", "Gold", "IEF", "JPY"]
+    assets = ["SP500", "Gold", "IEF", "JPY"]
+
     return_cols = [f"{a}_Return" for a in assets]
 
-    corr_all         = df[return_cols].corr()
-    corr_all.index   = assets
+    corr_all = df[return_cols].corr()
+    corr_all.index = assets
     corr_all.columns = assets
 
-    sns.heatmap(corr_all, annot=True, fmt=".2f", cmap="RdYlGn",
-                center=0, vmin=-1, vmax=1, ax=ax1,
-                linewidths=0.5, annot_kws={"size": 11})
+    sns.heatmap(
+        corr_all,
+        annot=True,
+        fmt=".2f",
+        cmap="RdYlGn",
+        center=0,
+        vmin=-1,
+        vmax=1,
+        ax=ax1,
+        linewidths=0.5,
+        annot_kws={"size": 11}
+    )
+
     ax1.set_title("Correlation — Full Period", fontsize=13)
 
-    stress           = df[df["is_stress"] == 1]
-    corr_stress      = stress[return_cols].corr()
-    corr_stress.index   = assets
+    stress = df[df["is_stress"] == 1]
+
+    corr_stress = stress[return_cols].corr()
+    corr_stress.index = assets
     corr_stress.columns = assets
 
-    sns.heatmap(corr_stress, annot=True, fmt=".2f", cmap="RdYlGn",
-                center=0, vmin=-1, vmax=1, ax=ax2,
-                linewidths=0.5, annot_kws={"size": 11})
+    sns.heatmap(
+        corr_stress,
+        annot=True,
+        fmt=".2f",
+        cmap="RdYlGn",
+        center=0,
+        vmin=-1,
+        vmax=1,
+        ax=ax2,
+        linewidths=0.5,
+        annot_kws={"size": 11}
+    )
+
     ax2.set_title("Correlation — Stress Days Only", fontsize=13)
 
-    plt.suptitle("Correlation Heatmap: Full Period vs Stress Days", fontsize=14)
-    plt.tight_layout()
-    fig.savefig(OUTPUT_DIR / "chart3_correlation.png", dpi=150)
-    plt.close()
-    print("Saved: chart3_correlation.png")
+    plt.suptitle(
+        "Correlation Heatmap: Full Period vs Stress Days",
+        fontsize=14
+    )
+
+    save_chart(fig, "chart3_correlation.png")
 
 
-# ── CHART 4: Return Distribution ──────────────────────────
-def chart4_distribution(df: pd.DataFrame):
+# ============================================================
+# CHART 4: RETURN DISTRIBUTION
+# ============================================================
+
+def chart4_distribution(df):
     stress = df[df["is_stress"] == 1]
-    fig, axes = plt.subplots(1, 3, figsize=(14, 5), sharey=True)
+
+    fig, axes = plt.subplots(
+        1,
+        3,
+        figsize=(14, 5),
+        sharey=True
+    )
 
     for i, asset in enumerate(SAFE_HAVENS):
         data = stress[f"{asset}_Return"] * 100
-        axes[i].hist(data, bins=20, color=COLORS[asset],
-                     alpha=0.7, edgecolor="white")
-        axes[i].axvline(data.mean(), color="black", linestyle="--",
-                        linewidth=1.2, label=f"Mean: {data.mean():.2f}%")
-        axes[i].axvline(0, color="red", linestyle="-",
-                        linewidth=0.8, alpha=0.5)
+
+        axes[i].hist(
+            data,
+            bins=20,
+            color=COLORS[asset],
+            alpha=0.7,
+            edgecolor="white"
+        )
+
+        axes[i].axvline(
+            data.mean(),
+            color="black",
+            linestyle="--",
+            linewidth=1.2,
+            label=f"Mean: {data.mean():.2f}%"
+        )
+
+        axes[i].axvline(
+            0,
+            color="red",
+            linestyle="-",
+            linewidth=0.8,
+            alpha=0.5
+        )
+
         axes[i].set_title(asset, fontsize=13)
         axes[i].set_xlabel("Daily Return (%)")
         axes[i].legend(fontsize=9)
         axes[i].grid(True, alpha=0.3)
 
     axes[0].set_ylabel("Frequency")
-    plt.suptitle("Return Distribution During Stress Days", fontsize=14)
-    plt.tight_layout()
-    fig.savefig(OUTPUT_DIR / "chart4_distribution.png", dpi=150)
-    plt.close()
-    print("Saved: chart4_distribution.png")
+
+    plt.suptitle(
+        "Return Distribution During Stress Days",
+        fontsize=14
+    )
+
+    save_chart(fig, "chart4_distribution.png")
 
 
-# ── CHART 5: Safe Haven Score Ranking ─────────────────────
-def chart5_score_ranking(score: pd.DataFrame):
-    score_cols = ["return_score", "winrate_score", "corr_score", "vol_score"]
-    labels     = ["Avg Return", "Win Rate", "Correlation", "Volatility"]
-    colors_bar = ["#FFB700", "#2196F3", "#4CAF50", "#9C27B0"]
+# ============================================================
+# CHART 5: SAFE HAVEN SCORE RANKING
+# ============================================================
+
+def chart5_score_ranking(score):
+    score_cols = [
+        "return_score",
+        "winrate_score",
+        "corr_score",
+        "vol_score"
+    ]
+
+    labels = [
+        "Avg Return",
+        "Win Rate",
+        "Correlation",
+        "Volatility"
+    ]
+
+    colors_bar = [
+        "#FFB700",
+        "#2196F3",
+        "#4CAF50",
+        "#9C27B0"
+    ]
 
     assets = score.sort_values("rank").index.tolist()
-    x      = np.arange(len(assets))
-    width  = 0.18
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    x = np.arange(len(assets))
+    width = 0.18
 
-    for i, (col, label, color) in enumerate(zip(score_cols, labels, colors_bar)):
+    fig, (ax1, ax2) = plt.subplots(
+        1,
+        2,
+        figsize=(14, 6)
+    )
+
+    for i, (col, label, color) in enumerate(
+        zip(score_cols, labels, colors_bar)
+    ):
         vals = [score.loc[a, col] for a in assets]
-        ax1.bar(x + i * width, vals, width, label=label,
-                color=color, alpha=0.8)
+
+        ax1.bar(
+            x + i * width,
+            vals,
+            width,
+            label=label,
+            color=color,
+            alpha=0.8
+        )
 
     ax1.set_xticks(x + width * 1.5)
     ax1.set_xticklabels(assets, fontsize=12)
+
     ax1.axhline(0, color="black", linewidth=0.8)
-    ax1.set_title("Score Breakdown by Criteria (Z-score)", fontsize=13)
+
+    ax1.set_title(
+        "Score Breakdown by Criteria (Z-score)",
+        fontsize=13
+    )
+
     ax1.set_ylabel("Z-score")
+
     ax1.legend(fontsize=9)
     ax1.grid(True, alpha=0.3, axis="y")
 
     final_vals = [score.loc[a, "final_score"] for a in assets]
+
     bar_colors = [COLORS.get(a, "#999999") for a in assets]
-    bars = ax2.bar(assets, final_vals, color=bar_colors,
-                   alpha=0.85, edgecolor="white", linewidth=1.2)
+
+    bars = ax2.bar(
+        assets,
+        final_vals,
+        color=bar_colors,
+        alpha=0.85,
+        edgecolor="white",
+        linewidth=1.2
+    )
 
     for bar, val in zip(bars, final_vals):
-        ax2.text(bar.get_x() + bar.get_width() / 2,
-                 bar.get_height() + 0.01,
-                 f"{val:.3f}", ha="center", va="bottom", fontsize=11)
+        ax2.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.01,
+            f"{val:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=11
+        )
 
     ax2.axhline(0, color="black", linewidth=0.8)
-    ax2.set_title("Final Safe Haven Score", fontsize=13)
+
+    ax2.set_title(
+        "Final Safe Haven Score",
+        fontsize=13
+    )
+
     ax2.set_ylabel("Final Score (avg Z-score)")
+
     ax2.grid(True, alpha=0.3, axis="y")
 
     winner = score[score["rank"] == 1].index[0]
+
     plt.suptitle(
         f"Safe Haven Score Ranking — Winner: {winner}",
-        fontsize=14, fontweight="bold"
+        fontsize=14,
+        fontweight="bold"
     )
-    plt.tight_layout()
-    fig.savefig(OUTPUT_DIR / "chart5_score_ranking.png", dpi=150)
-    plt.close()
-    print("Saved: chart5_score_ranking.png")
+
+    save_chart(fig, "chart5_score_ranking.png")
 
 
-# ── CHART 6: Behavior trong tung dot stress lon ───────────
-def chart6_stress_episodes(df: pd.DataFrame):
+# ============================================================
+# CHART 6: STRESS EPISODES
+# ============================================================
+
+def chart6_stress_episodes(df):
     df = df.copy()
+
     df["stress_group"] = (
         df["is_stress"]
         .ne(df["is_stress"].shift())
@@ -209,70 +457,193 @@ def chart6_stress_episodes(df: pd.DataFrame):
     )
 
     stress_episodes = []
-    for group_id, group in df[df["is_stress"] == 1].groupby("stress_group"):
+
+    for _, group in df[df["is_stress"] == 1].groupby("stress_group"):
         if len(group) >= 3:
             stress_episodes.append(group)
 
-    stress_episodes = sorted(stress_episodes, key=len, reverse=True)[:3]
+    stress_episodes = sorted(
+        stress_episodes,
+        key=len,
+        reverse=True
+    )[:3]
 
     if not stress_episodes:
-        print("Khong du dot stress dai de ve chart 6, bo qua.")
+        print("Not enough stress episodes for chart 6.")
         return
 
-    fig, axes = plt.subplots(1, len(stress_episodes),
-                              figsize=(14, 5), sharey=False)
+    fig, axes = plt.subplots(
+        1,
+        len(stress_episodes),
+        figsize=(14, 5),
+        sharey=False
+    )
 
     if len(stress_episodes) == 1:
         axes = [axes]
 
     for i, episode in enumerate(stress_episodes):
-        start     = episode.index[0] - pd.Timedelta(days=7)
-        end       = episode.index[-1] + pd.Timedelta(days=7)
+        start = episode.index[0] - pd.Timedelta(days=7)
+        end = episode.index[-1] + pd.Timedelta(days=7)
+
         window_df = df.loc[start:end]
-        ax        = axes[i]
+
+        ax = axes[i]
 
         for asset in SAFE_HAVENS:
-            cum_return = (1 + window_df[f"{asset}_Return"]).cumprod() - 1
-            ax.plot(window_df.index, cum_return * 100,
-                    color=COLORS[asset], linewidth=1.5, label=asset)
+            cum_return = (
+                1 + window_df[f"{asset}_Return"]
+            ).cumprod() - 1
+
+            ax.plot(
+                window_df.index,
+                cum_return * 100,
+                color=COLORS[asset],
+                linewidth=1.5,
+                label=asset
+            )
 
         for day in episode.index:
-            ax.axvspan(day, day + pd.Timedelta(days=1),
-                       color="red", alpha=0.15)
+            ax.axvspan(
+                day,
+                day + pd.Timedelta(days=1),
+                color="red",
+                alpha=0.15
+            )
 
-        ax.axhline(0, color="black", linestyle="--",
-                   linewidth=0.8, alpha=0.6)
+        ax.axhline(
+            0,
+            color="black",
+            linestyle="--",
+            linewidth=0.8,
+            alpha=0.6
+        )
 
         start_str = episode.index[0].strftime("%Y-%m-%d")
-        end_str   = episode.index[-1].strftime("%Y-%m-%d")
-        n_days    = len(episode)
+        end_str = episode.index[-1].strftime("%Y-%m-%d")
 
-        ax.set_title(f"Episode {i+1}\n{start_str} to {end_str}\n({n_days} stress days)",
-                     fontsize=11)
+        ax.set_title(
+            f"Episode {i+1}\n{start_str} to {end_str}",
+            fontsize=11
+        )
+
         ax.set_xlabel("Date")
         ax.set_ylabel("Cumulative Return (%)")
+
         ax.legend(fontsize=9)
+
         ax.grid(True, alpha=0.3)
+
         ax.tick_params(axis="x", rotation=30)
 
     plt.suptitle(
         "Safe Haven Behavior During Top 3 Stress Episodes",
-        fontsize=14, fontweight="bold"
+        fontsize=14,
+        fontweight="bold"
     )
-    plt.tight_layout()
-    fig.savefig(OUTPUT_DIR / "chart6_stress_episodes.png", dpi=150)
-    plt.close()
-    print("Saved: chart6_stress_episodes.png")
+
+    save_chart(fig, "chart6_stress_episodes.png")
 
 
-# ── MAIN ──────────────────────────────────────────────────
+# ============================================================
+# CHART 7: DRAWDOWN COMPARISON
+# ============================================================
+
+def chart7_drawdown_comparison(df):
+    stress_periods = get_stress_periods(df)
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    for asset, col in PRICE_COLUMNS.items():
+        drawdown = calculate_drawdown(df[col]) * 100
+
+        ax.plot(
+            df.index,
+            drawdown,
+            linewidth=1.6,
+            label=asset
+        )
+
+    for start, end in stress_periods:
+        ax.axvspan(start, end, alpha=0.18)
+
+    ax.axhline(0, linewidth=1, linestyle="--")
+
+    ax.set_title("Drawdown Comparison")
+
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Drawdown (%)")
+
+    ax.legend()
+
+    ax.grid(True, alpha=0.3)
+
+    save_chart(fig, "chart7_drawdown_comparison.png")
+
+
+# ============================================================
+# CHART 8: ROLLING CORRELATION
+# ============================================================
+
+def chart8_rolling_correlation(df, window=60):
+    stress_periods = get_stress_periods(df)
+
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    sp500_return = df["SP500_Return"]
+
+    safe_haven_returns = {
+        "Gold": "Gold_Return",
+        "IEF": "IEF_Return",
+        "JPY": "JPY_Return",
+    }
+
+    for asset, col in safe_haven_returns.items():
+        rolling_corr = (
+            df[col]
+            .rolling(window)
+            .corr(sp500_return)
+        )
+
+        ax.plot(
+            df.index,
+            rolling_corr,
+            linewidth=1.6,
+            label=f"{asset} vs S&P 500"
+        )
+
+    for start, end in stress_periods:
+        ax.axvspan(start, end, alpha=0.18)
+
+    ax.axhline(0, linewidth=1, linestyle="--")
+
+    ax.set_title(
+        f"Rolling {window}-Day Correlation with S&P 500"
+    )
+
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Rolling Correlation")
+
+    ax.legend()
+
+    ax.grid(True, alpha=0.3)
+
+    save_chart(fig, "chart8_rolling_correlation_sp500.png")
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("Doc data...")
+    print("Loading data...")
     features, score = load_data()
 
-    print("Ve bieu do...")
+    print("Generating charts...")
+
+    # FILE 1 CHARTS (KEEP ALL)
     chart1_stress_timeline(features)
     chart2_performance(features)
     chart3_correlation(features)
@@ -280,7 +651,12 @@ def main():
     chart5_score_ranking(score)
     chart6_stress_episodes(features)
 
-    print(f"\nXong! 6 bieu do da luu vao {OUTPUT_DIR}")
+    # FILE 2 CHARTS
+    # Keep only non-duplicate charts
+    chart7_drawdown_comparison(features)
+    chart8_rolling_correlation(features, window=60)
+
+    print(f"\nDone! Charts saved to: {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
