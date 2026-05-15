@@ -2,7 +2,6 @@ yfinance
 pandas
 numpy
 python-dotenv
-newsapi-python
 anthropic
 matplotlib
 seaborn
