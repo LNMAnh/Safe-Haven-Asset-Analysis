@@ -8,12 +8,12 @@ import pandas as pd
 from dotenv import load_dotenv
 from groq import Groq
 
-load_dotenv()
-
 # ─────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # AI/ -> project root
+
+load_dotenv(BASE_DIR / ".env")  # ← chuyển xuống đây, SAU khi BASE_DIR có giá trị
 
 DATA_DIR = BASE_DIR / "data"
 ANALYSIS_DIR = BASE_DIR / "analysis"
@@ -181,6 +181,8 @@ def call_llm(prompt, context, max_retries=3):
 
     if not api_key:
         return "ERROR: Missing GROQ_API_KEY"
+    
+    print(f"[DEBUG] API Key loaded: {api_key[:8]}...{api_key[-4:]}")
 
     client = Groq(api_key=api_key)
 
