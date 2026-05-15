@@ -219,4 +219,4 @@ __marimo__/
 .env
 __pycache__/
 *.pyc
-analysis/ai_report.md
+AI/ai_report.md
