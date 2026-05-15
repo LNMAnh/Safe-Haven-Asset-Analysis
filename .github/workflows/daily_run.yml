@@ -28,10 +28,8 @@ jobs:
         run: |
           python data_process/1_data_collector
           python data_process/2_data_cleaner
-          python data_process/news_collector.py
           python analysis/3_data_features
           python analysis/4_safe_haven_score
-          python analysis/merge_context.py
           
       - name: Chạy vẽ biểu đồ trực quan
         run: |
