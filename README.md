@@ -87,6 +87,8 @@ Or let the pipeline run automatically every day via **GitHub Actions** (`daily_r
 
 **AI Report** — covers 4 sections: Trend Summary · Anomaly Detection · Risk Commentary · Asset Comparison.
 
+A sample AI-generated report is available at [`ai_sample_report.md`](./ai_sample_report.md).
+
 ---
 
 ## 📁 Project Structure
@@ -99,6 +101,7 @@ Or let the pipeline run automatically every day via **GitHub Actions** (`daily_r
 ├── AI/                               # Groq API integration
 ├── visualization/                    # Chart generation & output
 ├── .env.example                      # API key configuration template
+├── ai_sample_report.md               # Sample AI analysis output
 ├── requirements.txt
 └── test_key.py
 ```
